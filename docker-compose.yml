@@ -20,10 +20,10 @@
 services:
 
   # --------------------------------------------------------------------------
-  # PostgreSQL 15
+  # PostgreSQL 17
   # --------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     container_name: dwh_postgres
     environment:
       POSTGRES_DB: data_engineering
