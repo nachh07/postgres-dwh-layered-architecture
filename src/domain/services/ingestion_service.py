@@ -6,6 +6,7 @@ relacionada con la carga de archivos CSV a la capa landing_zone.
 Delega las operaciones de I/O de base de datos a `SQLRepository`
 y `DatabaseConnection`.
 """
+
 import csv
 from pathlib import Path
 
@@ -109,9 +110,7 @@ class IngestionService:
 
             columns = self._settings.table_columns.get(table_name, [])
             if not columns:
-                raise ValueError(
-                    f"No se encontraron columnas configuradas para '{table_name}'"
-                )
+                raise ValueError(f"No se encontraron columnas configuradas para '{table_name}'")
 
             columns_str = ", ".join(columns)
 

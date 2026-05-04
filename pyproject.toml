@@ -10,6 +10,9 @@ addopts = [
     "--cov-fail-under=80",
     "-v",
 ]
+markers = [
+    "integration: marks tests that require a real database connection (deselect with '-m not integration')",
+]
 
 [tool.coverage.run]
 source = ["src"]
@@ -24,3 +27,26 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
 ]
+
+# ---------------------------------------------------------------------------
+# Ruff — Linter configuration
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "B008",  # do not perform function calls in default arguments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # allow assert in tests

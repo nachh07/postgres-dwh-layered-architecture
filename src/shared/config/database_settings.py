@@ -4,6 +4,7 @@ Configuración de base de datos.
 Lee las variables de entorno (desde config/.env o entorno del contenedor)
 y expone la clase `DatabaseSettings` con los parámetros de conexión.
 """
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,7 +23,9 @@ def _load_env() -> None:
     if env_path.exists():
         load_dotenv(env_path)
     else:
-        print(f"[WARN] No se encontró .env en: {env_path}. Usando variables de entorno del sistema.")
+        print(
+            f"[WARN] No se encontró .env en: {env_path}. Usando variables de entorno del sistema."
+        )
         load_dotenv()
 
 

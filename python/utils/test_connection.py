@@ -1,6 +1,7 @@
 """
 Test de conexión a PostgreSQL
 """
+
 import sys
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from python.config.database import test_connection
 if __name__ == "__main__":
     print("🔍 Probando conexión a PostgreSQL...")
     print("-" * 50)
-    
+
     if test_connection():
         print("-" * 50)
         print("✅ ¡Conexión exitosa! Puedes ejecutar el pipeline.")

@@ -4,14 +4,16 @@ conftest.py — Fixtures compartidas para toda la suite de tests.
 Provee mocks y stubs de las dependencias externas (DB, filesystem)
 para que los tests unitarios no requieran una base de datos real.
 """
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # Fixtures de base de datos
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_cursor():
@@ -78,6 +80,7 @@ def mock_repo():
 # Fixtures de settings
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_settings(tmp_path):
     """
@@ -103,6 +106,7 @@ def sample_settings(tmp_path):
 # ---------------------------------------------------------------------------
 # Fixtures de archivos CSV de prueba
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_csv_comma(tmp_path) -> Path:

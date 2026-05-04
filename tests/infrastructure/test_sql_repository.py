@@ -9,19 +9,15 @@ Cubre:
 - get_table_count() exitoso y con error
 - truncate_table()
 """
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from src.infrastructure.repositories.sql_repository import SQLRepository
-
 
 # ---------------------------------------------------------------------------
 # Tests de execute_file
 # ---------------------------------------------------------------------------
 
-class TestSQLRepositoryExecuteFile:
 
+class TestSQLRepositoryExecuteFile:
     def test_execute_file_returns_true_on_success(self, mock_db, sample_sql_file):
         repo = SQLRepository(db=mock_db)
         result = repo.execute_file(sample_sql_file, "Test query")
@@ -56,8 +52,8 @@ class TestSQLRepositoryExecuteFile:
 # Tests de execute
 # ---------------------------------------------------------------------------
 
-class TestSQLRepositoryExecute:
 
+class TestSQLRepositoryExecute:
     def test_execute_returns_true_on_success(self, mock_db, mock_cursor):
         repo = SQLRepository(db=mock_db)
         result = repo.execute("SELECT 1;")
@@ -79,8 +75,8 @@ class TestSQLRepositoryExecute:
 # Tests de get_table_count
 # ---------------------------------------------------------------------------
 
-class TestSQLRepositoryGetTableCount:
 
+class TestSQLRepositoryGetTableCount:
     def test_get_table_count_returns_count(self, mock_db, mock_cursor):
         mock_cursor.fetchone.return_value = (999,)
         repo = SQLRepository(db=mock_db)
@@ -110,8 +106,8 @@ class TestSQLRepositoryGetTableCount:
 # Tests de truncate_table
 # ---------------------------------------------------------------------------
 
-class TestSQLRepositoryTruncateTable:
 
+class TestSQLRepositoryTruncateTable:
     def test_truncate_table_returns_true(self, mock_db, mock_cursor):
         repo = SQLRepository(db=mock_db)
         result = repo.truncate_table("landing_zone", "raw_clientes")

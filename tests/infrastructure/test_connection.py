@@ -7,22 +7,23 @@ Cubre:
 - connection() context manager (commit y rollback)
 - cursor() context manager
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, call
 
 from src.infrastructure.database.connection import DatabaseConnection
 from src.shared.config.database_settings import DatabaseSettings
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_db_settings(**kwargs) -> DatabaseSettings:
     """Crea un DatabaseSettings con valores de prueba."""
     defaults = dict(
-        host="localhost", port=5432,
-        database="test_db", user="test_user", password="test_pass"
+        host="localhost", port=5432, database="test_db", user="test_user", password="test_pass"
     )
     defaults.update(kwargs)
     return DatabaseSettings(**defaults)
@@ -32,8 +33,8 @@ def _make_db_settings(**kwargs) -> DatabaseSettings:
 # Tests de ping
 # ---------------------------------------------------------------------------
 
-class TestDatabaseConnectionPing:
 
+class TestDatabaseConnectionPing:
     def test_ping_returns_true_on_success(self):
         """ping() retorna True cuando la conexión es exitosa."""
         db = DatabaseConnection(db_settings=_make_db_settings())
@@ -65,8 +66,8 @@ class TestDatabaseConnectionPing:
 # Tests de connection() context manager
 # ---------------------------------------------------------------------------
 
-class TestDatabaseConnectionContextManager:
 
+class TestDatabaseConnectionContextManager:
     def test_connection_commits_on_success(self):
         """connection() hace commit si no hay excepciones."""
         db = DatabaseConnection(db_settings=_make_db_settings())
@@ -126,8 +127,8 @@ class TestDatabaseConnectionContextManager:
 # Tests de cursor() context manager
 # ---------------------------------------------------------------------------
 
-class TestDatabaseConnectionCursor:
 
+class TestDatabaseConnectionCursor:
     def test_cursor_yields_cursor_object(self):
         """cursor() proporciona un objeto cursor."""
         db = DatabaseConnection(db_settings=_make_db_settings())
@@ -172,8 +173,8 @@ class TestDatabaseConnectionCursor:
 # Tests de DatabaseSettings repr
 # ---------------------------------------------------------------------------
 
-class TestDatabaseSettings:
 
+class TestDatabaseSettings:
     def test_repr_hides_password(self):
         ds = _make_db_settings(password="supersecret")
         assert "supersecret" not in repr(ds)

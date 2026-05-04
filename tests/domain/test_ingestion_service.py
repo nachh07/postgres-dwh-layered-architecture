@@ -12,17 +12,16 @@ Cubre:
 - load_all: algunos fallidos
 - load_all: archivo CSV faltante
 """
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+
+from unittest.mock import MagicMock, patch
 
 from src.domain.services.ingestion_service import IngestionService
 from src.shared.config.settings import Settings
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_service(mock_db, mock_repo, tmp_path) -> tuple[IngestionService, Settings]:
     """Crea un IngestionService con Settings apuntando a tmp_path."""
@@ -43,8 +42,8 @@ def _make_service(mock_db, mock_repo, tmp_path) -> tuple[IngestionService, Setti
 # Tests de _detect_delimiter
 # ---------------------------------------------------------------------------
 
-class TestDetectDelimiter:
 
+class TestDetectDelimiter:
     def test_returns_special_delimiter_for_clientes(self, mock_db, mock_repo, tmp_path):
         svc, s = _make_service(mock_db, mock_repo, tmp_path)
         csv_path = tmp_path / "data" / "Clientes.csv"
@@ -74,15 +73,17 @@ class TestDetectDelimiter:
 # Tests de load_csv
 # ---------------------------------------------------------------------------
 
-class TestLoadCsv:
 
+class TestLoadCsv:
     def test_load_csv_returns_true_on_success(self, mock_db, mock_repo, tmp_path):
         svc, s = _make_service(mock_db, mock_repo, tmp_path)
 
         # Crear CSV de prueba en data_dir con nombre de tabla conocida
         csv_path = s.data_dir / "Venta.csv"
         header = ",".join(s.table_columns["raw_ventas"])
-        csv_path.write_text(f"{header}\n1,2024-01-01,2024-01-02,1,1,1,1,1,100,2\n", encoding="latin1")
+        csv_path.write_text(
+            f"{header}\n1,2024-01-01,2024-01-02,1,1,1,1,1,100,2\n", encoding="latin1"
+        )
 
         # Mock del cursor para COPY
         mock_cur = MagicMock()
@@ -102,7 +103,9 @@ class TestLoadCsv:
 
         csv_path = s.data_dir / "Venta.csv"
         header = ",".join(s.table_columns["raw_ventas"])
-        csv_path.write_text(f"{header}\n1,2024-01-01,2024-01-02,1,1,1,1,1,100,2\n", encoding="latin1")
+        csv_path.write_text(
+            f"{header}\n1,2024-01-01,2024-01-02,1,1,1,1,1,100,2\n", encoding="latin1"
+        )
 
         mock_cur = MagicMock()
         mock_conn = MagicMock()
@@ -146,8 +149,8 @@ class TestLoadCsv:
 # Tests de load_all
 # ---------------------------------------------------------------------------
 
-class TestLoadAll:
 
+class TestLoadAll:
     def test_load_all_returns_dict_with_all_keys(self, mock_db, mock_repo, tmp_path):
         svc, s = _make_service(mock_db, mock_repo, tmp_path)
         # No crear ningún CSV → todos serán False (not found)

@@ -9,8 +9,11 @@ Cubre:
 - Columnas por tabla
 - Creación automática del directorio de logs
 """
-import pytest
+
 from pathlib import Path
+
+import pytest
+
 from src.shared.config.settings import Settings, settings
 
 

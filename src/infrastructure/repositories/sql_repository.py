@@ -4,6 +4,7 @@ Capa de infraestructura — Repositorio SQL.
 La clase `SQLRepository` abstrae la ejecución de archivos .sql y
 sentencias SQL sueltas, delegando la conexión a `DatabaseConnection`.
 """
+
 from pathlib import Path
 
 from src.infrastructure.database.connection import DatabaseConnection, default_db

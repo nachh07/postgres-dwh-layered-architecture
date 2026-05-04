@@ -4,6 +4,7 @@ Capa de dominio — Servicio de carga al Data Warehouse (Staging → Service).
 La clase `ServiceLayerService` orquesta los MERGEs de dimensiones
 y hechos que construyen el Star Schema en el schema `service`.
 """
+
 from src.infrastructure.repositories.sql_repository import SQLRepository, default_repo
 from src.shared.config.settings import Settings, settings
 from src.shared.logger import get_logger
