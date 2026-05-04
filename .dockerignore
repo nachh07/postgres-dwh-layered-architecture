@@ -1,0 +1,35 @@
+# Archivos de datos (son grandes y no van en la imagen)
+data/
+
+# Logs generados
+logs/
+
+# Entorno virtual Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Variables de entorno (nunca en la imagen)
+config/.env
+
+# Coverage y tests
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# Docs
+docs/
+*.md

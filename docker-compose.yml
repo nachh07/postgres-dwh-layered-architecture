@@ -1,0 +1,86 @@
+# =============================================================================
+# docker-compose.yml
+# Pipeline ETL — PostgreSQL DWH Layered Architecture
+#
+# Servicios:
+#   postgres  — Base de datos PostgreSQL 15
+#   etl       — Pipeline Python (build local)
+#
+# Uso:
+#   Primera ejecución (crea schemas y tablas):
+#     docker compose up --build
+#
+#   Ejecuciones incrementales (no recrea tablas):
+#     docker compose run --rm etl
+#
+#   Solo levantar la base de datos (para conectar DBeaver/pgAdmin):
+#     docker compose up postgres
+# =============================================================================
+
+services:
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL 15
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: dwh_postgres
+    environment:
+      POSTGRES_DB: data_engineering
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persistencia de datos entre reinicios
+      - pgdata:/var/lib/postgresql/data
+      # Script de init (se ejecuta solo la primera vez)
+      - ./docker/init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d data_engineering"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dwh_network
+
+  # --------------------------------------------------------------------------
+  # ETL Pipeline Python
+  # --------------------------------------------------------------------------
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dwh_etl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./config/.env
+    environment:
+      # Sobrescribir host para que apunte al contenedor postgres
+      DB_HOST: postgres
+    volumes:
+      # CSVs montados (no se empaquetan en la imagen)
+      - ./data:/app/data:ro
+      # Logs persistentes en el host
+      - ./logs:/app/logs
+    command: >
+      python -m src.domain.pipeline.pipeline_orchestrator
+      --create-schema
+      --create-tables
+    networks:
+      - dwh_network
+    restart: "no"
+
+# =============================================================================
+# Volúmenes y redes
+# =============================================================================
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  dwh_network:
+    driver: bridge
