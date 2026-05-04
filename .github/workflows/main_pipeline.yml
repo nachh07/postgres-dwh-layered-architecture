@@ -79,6 +79,7 @@ jobs:
       - name: Run integration tests
         run: |
           pytest \
+            --no-cov \
             -v \
             -m integration \
             tests/infrastructure/test_db_integration.py
