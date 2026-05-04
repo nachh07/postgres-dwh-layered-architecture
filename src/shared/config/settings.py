@@ -4,11 +4,10 @@ Configuración general del proyecto.
 Este módulo centraliza todas las rutas, constantes y mapeos del proyecto.
 Expone la clase `Settings` como punto único de verdad para la configuración.
 """
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict
-
 
 # ---------------------------------------------------------------------------
 # Raíz del proyecto (calculada en tiempo de importación)
@@ -41,7 +40,7 @@ class Settings:
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     # ---- Mapeo CSV → tabla landing_zone ----------------------------------
-    csv_table_mapping: Dict[str, str] = field(
+    csv_table_mapping: dict[str, str] = field(
         default_factory=lambda: {
             "Clientes.csv": "raw_clientes",
             "Venta.csv": "raw_ventas",
@@ -57,7 +56,7 @@ class Settings:
     )
 
     # ---- Delimitadores especiales por archivo ----------------------------
-    special_delimiters: Dict[str, str] = field(
+    special_delimiters: dict[str, str] = field(
         default_factory=lambda: {
             "Clientes.csv": ";",
             "Sucursales.csv": ";",
@@ -65,36 +64,73 @@ class Settings:
     )
 
     # ---- Columnas por tabla (para COPY sin created_at) ------------------
-    table_columns: Dict[str, list] = field(
+    table_columns: dict[str, list] = field(
         default_factory=lambda: {
             "raw_clientes": [
-                "id", "provincia", "nombre_y_apellido", "domicilio",
-                "telefono", "edad", "localidad", "x", "y", "fecha_alta",
-                "usuario_alta", "fecha_ultima_modificacion",
-                "usuario_ultima_modificacion", "marca_baja", "col10",
+                "id",
+                "provincia",
+                "nombre_y_apellido",
+                "domicilio",
+                "telefono",
+                "edad",
+                "localidad",
+                "x",
+                "y",
+                "fecha_alta",
+                "usuario_alta",
+                "fecha_ultima_modificacion",
+                "usuario_ultima_modificacion",
+                "marca_baja",
+                "col10",
             ],
             "raw_ventas": [
-                "idventa", "fecha", "fecha_entrega", "idcanal",
-                "idcliente", "idsucursal", "idempleado", "idproducto",
-                "precio", "cantidad",
+                "idventa",
+                "fecha",
+                "fecha_entrega",
+                "idcanal",
+                "idcliente",
+                "idsucursal",
+                "idempleado",
+                "idproducto",
+                "precio",
+                "cantidad",
             ],
             "raw_productos": ["id_producto", "concepto", "tipo", "precio"],
             "raw_compras": [
-                "idcompra", "fecha", "idproducto", "cantidad",
-                "precio", "idproveedor",
+                "idcompra",
+                "fecha",
+                "idproducto",
+                "cantidad",
+                "precio",
+                "idproveedor",
             ],
             "raw_gastos": ["idgasto", "idsucursal", "idtipogasto", "fecha", "monto"],
             "raw_empleados": [
-                "id_empleado", "apellido", "nombre", "sucursal",
-                "sector", "cargo", "salario",
+                "id_empleado",
+                "apellido",
+                "nombre",
+                "sucursal",
+                "sector",
+                "cargo",
+                "salario",
             ],
             "raw_sucursales": [
-                "id", "sucursal", "direccion", "localidad",
-                "provincia", "latitud", "longitud",
+                "id",
+                "sucursal",
+                "direccion",
+                "localidad",
+                "provincia",
+                "latitud",
+                "longitud",
             ],
             "raw_proveedores": [
-                "idproveedor", "nombre", "address", "city",
-                "state", "country", "departamen",
+                "idproveedor",
+                "nombre",
+                "address",
+                "city",
+                "state",
+                "country",
+                "departamen",
             ],
             "raw_canal_venta": ["codigo", "descripcion"],
             "raw_tipo_gasto": ["idtipogasto", "descripcion", "monto_aproximado"],

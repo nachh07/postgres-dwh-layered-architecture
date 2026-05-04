@@ -4,6 +4,7 @@ Logger compartido del proyecto.
 Provee la función `get_logger` para obtener loggers configurados
 con salida a consola y opcionalmente a archivo.
 """
+
 import logging
 import sys
 from pathlib import Path

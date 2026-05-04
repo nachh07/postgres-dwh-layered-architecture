@@ -7,17 +7,16 @@ Cubre:
 - run_merges(): un script falla → retorna False
 - run_merges(): resumen de tablas se loguea (sin error)
 """
-import pytest
+
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
 
-from src.domain.services.staging_service import StagingService, _MERGE_ORDER, _STAGING_TABLES
+from src.domain.services.staging_service import _MERGE_ORDER, _STAGING_TABLES, StagingService
 from src.shared.config.settings import Settings
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_service(mock_repo, tmp_path) -> tuple[StagingService, Settings]:
     sql_dir = tmp_path / "sql"
@@ -44,8 +43,8 @@ def _create_all_merge_scripts(merge_dir: Path) -> None:
 # Tests de run_merges
 # ---------------------------------------------------------------------------
 
-class TestStagingServiceRunMerges:
 
+class TestStagingServiceRunMerges:
     def test_run_merges_returns_true_when_all_succeed(self, mock_repo, tmp_path):
         svc, s = _make_service(mock_repo, tmp_path)
         merge_dir = s.sql_dir / "02_staging" / "dml"

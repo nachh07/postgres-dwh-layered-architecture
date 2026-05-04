@@ -10,6 +10,7 @@ la política de fallo rápido (fail-fast) ante errores críticos.
 Ejecución CLI:
     python -m src.domain.pipeline.pipeline_orchestrator [--create-schema] [--create-tables]
 """
+
 import argparse
 import sys
 from datetime import datetime
@@ -65,7 +66,9 @@ class PipelineOrchestrator:
     # API pública
     # ------------------------------------------------------------------
 
-    def run(self, create_schema: bool = False, create_tables: bool = False, only_init: bool = False) -> bool:
+    def run(
+        self, create_schema: bool = False, create_tables: bool = False, only_init: bool = False
+    ) -> bool:
         """
         Ejecuta el pipeline completo end-to-end.
 
@@ -93,9 +96,7 @@ class PipelineOrchestrator:
 
             if only_init:
                 elapsed = datetime.now() - start_time
-                self._log_header(
-                    f"✅ INICIALIZACIÓN COMPLETADA (solo DDL)  |  Tiempo: {elapsed}"
-                )
+                self._log_header(f"✅ INICIALIZACIÓN COMPLETADA (solo DDL)  |  Tiempo: {elapsed}")
                 return True
 
             # Paso 2: CSV → Landing
@@ -112,9 +113,7 @@ class PipelineOrchestrator:
 
             # Éxito
             elapsed = datetime.now() - start_time
-            self._log_header(
-                f"✅ PIPELINE COMPLETADO EXITOSAMENTE  |  Tiempo: {elapsed}"
-            )
+            self._log_header(f"✅ PIPELINE COMPLETADO EXITOSAMENTE  |  Tiempo: {elapsed}")
             return True
 
         except Exception as exc:
@@ -180,10 +179,9 @@ class PipelineOrchestrator:
 # Punto de entrada CLI
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Ejecutar pipeline de Data Engineering end-to-end"
-    )
+    parser = argparse.ArgumentParser(description="Ejecutar pipeline de Data Engineering end-to-end")
     parser.add_argument(
         "--create-schema",
         action="store_true",

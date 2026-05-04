@@ -4,9 +4,9 @@ Modelos de dominio — Value Objects del pipeline.
 Define los tipos de datos inmutables que viajan entre las capas
 del pipeline, evitando acoplamiento directo con primitivos.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,7 @@ class PipelineResult:
     """
 
     success: bool
-    steps: Dict[str, StepResult] = field(default_factory=dict)
+    steps: dict[str, StepResult] = field(default_factory=dict)
     started_at: datetime = field(default_factory=datetime.now)
     finished_at: datetime | None = None
 

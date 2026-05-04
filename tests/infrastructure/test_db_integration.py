@@ -1,4 +1,5 @@
 import pytest
+
 from src.infrastructure.database.connection import DatabaseConnection
 
 
@@ -19,5 +20,5 @@ def test_database_write_operation():
         row_id = cur.fetchone()[0]
         assert row_id > 0
         cur.execute("SELECT step FROM ci_metadata WHERE id = %s;", (row_id,))
-        assert cur.fetchone()[0] == 'CI_RUNNING'
+        assert cur.fetchone()[0] == "CI_RUNNING"
         cur.execute("DROP TABLE ci_metadata;")

@@ -5,8 +5,9 @@ La clase `DatabaseConnection` encapsula toda la lógica de apertura,
 commit, rollback y cierre de conexiones a PostgreSQL, exponiendo
 context managers seguros para conexión y cursor.
 """
+
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 import psycopg2
 import psycopg2.extensions

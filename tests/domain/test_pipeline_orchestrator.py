@@ -12,17 +12,16 @@ Cubre:
 - _create_schemas() delega al repositorio
 - _create_all_tables() ejecuta los 5 pasos DDL
 """
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+
+from unittest.mock import MagicMock
 
 from src.domain.pipeline.pipeline_orchestrator import PipelineOrchestrator
 from src.shared.config.settings import Settings
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_orchestrator(tmp_path, mock_repo, ingestion=None, staging=None, service_layer=None):
     """Crea un orquestador con todas las dependencias mockeadas."""
@@ -66,21 +65,26 @@ def _make_orchestrator(tmp_path, mock_repo, ingestion=None, staging=None, servic
     if service_layer is None:
         mock_service.run_merges.return_value = True
 
-    return PipelineOrchestrator(
-        repo=mock_repo,
-        ingestion=mock_ingestion,
-        staging=mock_staging,
-        service_layer=mock_service,
-        app_settings=s,
-    ), mock_ingestion, mock_staging, mock_service
+    return (
+        PipelineOrchestrator(
+            repo=mock_repo,
+            ingestion=mock_ingestion,
+            staging=mock_staging,
+            service_layer=mock_service,
+            app_settings=s,
+        ),
+        mock_ingestion,
+        mock_staging,
+        mock_service,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Tests de run() — flujo completo
 # ---------------------------------------------------------------------------
 
-class TestPipelineOrchestratorRun:
 
+class TestPipelineOrchestratorRun:
     def test_run_returns_true_on_full_success(self, mock_repo, tmp_path):
         orch, ing, stg, svc = _make_orchestrator(tmp_path, mock_repo)
         result = orch.run()
@@ -141,8 +145,8 @@ class TestPipelineOrchestratorRun:
 # Tests de run() con flags opcionales
 # ---------------------------------------------------------------------------
 
-class TestPipelineOrchestratorWithFlags:
 
+class TestPipelineOrchestratorWithFlags:
     def test_run_with_create_schema_calls_execute_file(self, mock_repo, tmp_path):
         orch, _, _, _ = _make_orchestrator(tmp_path, mock_repo)
         mock_repo.execute_file.return_value = True
