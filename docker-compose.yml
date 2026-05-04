@@ -46,30 +46,26 @@ services:
       - dwh_network
 
   # --------------------------------------------------------------------------
-  # ETL Pipeline Python
+  # Inicializador de Base de Datos (Solo crea schemas y tablas)
   # --------------------------------------------------------------------------
-  etl:
+  init-db:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dwh_etl
+    container_name: dwh_init_db
     depends_on:
       postgres:
         condition: service_healthy
     env_file:
-      - ./config/.env
+      - .env
     environment:
-      # Sobrescribir host para que apunte al contenedor postgres
+      # Dentro de la red de docker, la BD se llama 'postgres'
       DB_HOST: postgres
-    volumes:
-      # CSVs montados (no se empaquetan en la imagen)
-      - ./data:/app/data:ro
-      # Logs persistentes en el host
-      - ./logs:/app/logs
     command: >
       python -m src.domain.pipeline.pipeline_orchestrator
       --create-schema
       --create-tables
+      --only-init
     networks:
       - dwh_network
     restart: "no"

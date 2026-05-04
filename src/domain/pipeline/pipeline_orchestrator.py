@@ -65,13 +65,14 @@ class PipelineOrchestrator:
     # API pública
     # ------------------------------------------------------------------
 
-    def run(self, create_schema: bool = False, create_tables: bool = False) -> bool:
+    def run(self, create_schema: bool = False, create_tables: bool = False, only_init: bool = False) -> bool:
         """
         Ejecuta el pipeline completo end-to-end.
 
         Args:
             create_schema: Si True, crea los schemas antes de ejecutar.
             create_tables: Si True, crea/recrea las tablas antes de ejecutar.
+            only_init:     Si True, se detiene luego de crear schemas y tablas.
 
         Returns:
             True si todos los pasos se completaron sin errores.
@@ -89,6 +90,13 @@ class PipelineOrchestrator:
             if create_tables:
                 if not self._create_all_tables():
                     return self._fail("Error creando tablas", start_time)
+
+            if only_init:
+                elapsed = datetime.now() - start_time
+                self._log_header(
+                    f"✅ INICIALIZACIÓN COMPLETADA (solo DDL)  |  Tiempo: {elapsed}"
+                )
+                return True
 
             # Paso 2: CSV → Landing
             if not self._load_csvs():
@@ -186,6 +194,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Crear/recrear tablas antes de ejecutar el pipeline",
     )
+    parser.add_argument(
+        "--only-init",
+        action="store_true",
+        help="Solo inicializar base de datos (DDL) sin cargar datos",
+    )
     return parser.parse_args()
 
 
@@ -195,5 +208,6 @@ if __name__ == "__main__":
     success = orchestrator.run(
         create_schema=args.create_schema,
         create_tables=args.create_tables,
+        only_init=args.only_init,
     )
     sys.exit(0 if success else 1)
