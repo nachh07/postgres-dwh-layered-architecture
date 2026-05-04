@@ -11,6 +11,7 @@ Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando P
 - 🔄 **Soft deletes** implementados
 - 📝 **Auditoría completa** en todas las tablas
 - 🧪 **85%+ test coverage** con pytest
+- 🤖 **CI/CD Automatizado** en GitHub Actions (Lint, Test, Docker Deploy)
 
 ---
 
@@ -19,6 +20,7 @@ Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando P
 - [Arquitectura de Código](#️-arquitectura-de-código)
 - [Arquitectura de Datos](#️-arquitectura-de-datos)
 - [Características Principales](#-características-principales)
+- [CI/CD Pipeline](#-cicd-pipeline)
 - [Requisitos](#-requisitos)
 - [Inicio Rápido con Docker](#-inicio-rápido-con-docker)
 - [Desarrollo Local](#️-desarrollo-local)
@@ -112,6 +114,20 @@ Todas las tablas de staging y service incluyen: `created_at`, `updated_at`, `is_
 - **78 tests** con mocks (sin base de datos real)
 - **85%+ de cobertura**
 - Ejecutables con `python -m pytest`
+
+---
+
+## 🤖 CI/CD Pipeline
+
+El proyecto cuenta con un flujo completo de Integración Continua y Despliegue Continuo usando **GitHub Actions**.
+
+### Workflows Automatizados
+
+1. **Linting & Code Quality**: Validación de formato y estilo con `ruff` en cada Push/PR.
+2. **Testing (Unit + Integration)**:
+   - Tests Unitarios con +80% de code coverage forzado.
+   - Tests de Integración utilizando un contenedor `postgres:17-alpine` dinámico en GitHub Actions.
+3. **Docker Build & Push**: Al hacer push a la rama `main`, si pasan los tests, se construye y pushea automáticamente una imagen multi-stage (`builder` -> `runtime`) optimizada hacia **Docker Hub**.
 
 ---
 
