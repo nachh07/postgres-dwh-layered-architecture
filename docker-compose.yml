@@ -1,0 +1,105 @@
+# =============================================================================
+# docker-compose.yml
+# Pipeline ETL — PostgreSQL DWH Layered Architecture
+#
+# Servicios:
+#   postgres  — Base de datos PostgreSQL 15
+#   etl       — Pipeline Python (build local)
+#
+# Uso:
+#   Primera ejecución (crea schemas y tablas):
+#     docker compose up --build
+#
+#   Ejecuciones incrementales (no recrea tablas):
+#     docker compose run --rm etl
+#
+#   Solo levantar la base de datos (para conectar DBeaver/pgAdmin):
+#     docker compose up postgres
+# =============================================================================
+
+services:
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL 17
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: dwh_postgres
+    environment:
+      POSTGRES_DB: data_engineering
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persistencia de datos entre reinicios
+      - pgdata:/var/lib/postgresql/data
+      # Script de init (se ejecuta solo la primera vez)
+      - ./docker/init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d data_engineering"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dwh_network
+
+  # --------------------------------------------------------------------------
+  # Inicializador de Base de Datos (Solo crea schemas y tablas)
+  # --------------------------------------------------------------------------
+  init-db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dwh_init_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Dentro de la red de docker, la BD se llama 'postgres'
+      DB_HOST: postgres
+    command: >
+      python -m src.domain.pipeline.pipeline_orchestrator
+      --create-schema
+      --create-tables
+      --only-init
+    networks:
+      - dwh_network
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Interfaz Web pgAdmin4
+  # --------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: dwh_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dwh_network
+
+# =============================================================================
+# Volúmenes y redes
+# =============================================================================
+volumes:
+  pgdata:
+    driver: local
+  pgadmin-data:
+    driver: local
+
+networks:
+  dwh_network:
+    driver: bridge
