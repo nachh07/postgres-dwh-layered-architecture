@@ -1,4 +1,4 @@
-# 🚀 Ejemplo práctico ETL Data Warehousing 
+# 🚀 ETL Data Warehousing — PostgreSQL DWH Layered Architecture
 
 Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando PostgreSQL, implementando MERGE con soft deletes y modelo dimensional (Star Schema).
 
@@ -7,71 +7,89 @@ Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando P
 - 🗄️ **70,837 registros** en Staging
 - 📦 **8 dimensiones** cargadas
 - 📈 **3 hechos** poblados (66,824 transacciones totales)
-- ⚡ **Pipeline automatizado** con orquestador
+- ⚡ **Pipeline dockerizado** — `docker compose up --build`
 - 🔄 **Soft deletes** implementados
 - 📝 **Auditoría completa** en todas las tablas
+- 🧪 **85%+ test coverage** con pytest
 
 ---
 
 ## 📋 Tabla de Contenidos
 
-- [Arquitectura](#️-arquitectura)
+- [Arquitectura de Código](#️-arquitectura-de-código)
+- [Arquitectura de Datos](#️-arquitectura-de-datos)
 - [Características Principales](#-características-principales)
 - [Requisitos](#-requisitos)
-- [Instalación](#-instalación)
-- [Uso](#-uso)
+- [Inicio Rápido con Docker](#-inicio-rápido-con-docker)
+- [Desarrollo Local](#️-desarrollo-local)
+- [Tests](#-tests)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Datos Cargados](#-datos-cargados)
-- [Queries de Ejemplo](#-queries-de-ejemplo)
 
 ---
 
-## 🏗️ Arquitectura
+## 🏗️ Arquitectura de Código
+
+El código Python sigue una arquitectura en 3 capas dentro de `src/`:
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    CSV FILES (10 archivos)                │
-│    Clientes, Ventas, Productos, Compras, Gastos, etc.   │
-└───────────────────────┬──────────────────────────────────┘
-                        │ COPY de PostgreSQL
-                        ↓
-┌──────────────────────────────────────────────────────────┐
-│         CAPA 1: LANDING ZONE (landing_zone)              │
-│  • 10 tablas raw_* con tipos TEXT                        │
-│  • Datos crudos sin transformación                        │
-│  • Solo columna: created_at                               │
-└───────────────────────┬──────────────────────────────────┘
-                        │ MERGE (3 casos)
-                        ↓
-┌──────────────────────────────────────────────────────────┐
-│           CAPA 2: STAGING (staging)                      │
-│  • 10 tablas stg_* con tipos correctos                   │
-│  • MERGE con INSERT, UPDATE, SOFT DELETE                 │
-│  • Columnas de auditoría:                                │
-│    - created_at, updated_at                              │
-│    - is_deleted, deleted_at                              │
-└───────────────────────┬──────────────────────────────────┘
-                        │ Transformaciones
-                        ↓
-┌──────────────────────────────────────────────────────────┐
-│      CAPA 3: TRANSFORMATION (transformation)             │
-│  • Reservada para transformaciones de negocio            │
-│  • Normalizaciones adicionales                           │
-└───────────────────────┬──────────────────────────────────┘
-                        │ MERGE a Star Schema
-                        ↓
-┌──────────────────────────────────────────────────────────┐
-│          CAPA 4: SERVICE / DWH (service)                 │
-│  • 8 Dimensiones (SCD Tipo 1)                            │
-│    - dim_tiempo, dim_cliente, dim_producto,              │
-│      dim_sucursal, dim_empleado, dim_proveedor,          │
-│      dim_canal, dim_tipo_gasto                           │
-│  • 3 Hechos                                              │
-│    - fact_ventas, fact_compras, fact_gastos              │
-└──────────────────────────────────────────────────────────┘
+src/
+├── shared/              ← Configuración, logger (sin dependencias de dominio)
+│   ├── config/
+│   │   ├── settings.py          ← Settings (frozen dataclass)
+│   │   └── database_settings.py ← DatabaseSettings (frozen dataclass)
+│   └── logger.py
+│
+├── infrastructure/      ← I/O externo: DB, archivos SQL
+│   ├── database/
+│   │   └── connection.py        ← DatabaseConnection (psycopg2 wrapping)
+│   └── repositories/
+│       └── sql_repository.py    ← SQLRepository (execute_file, truncate, count)
+│
+└── domain/              ← Lógica de negocio pura
+    ├── models/
+    │   └── pipeline_result.py   ← StepResult, PipelineResult (value objects)
+    ├── services/
+    │   ├── ingestion_service.py      ← CSV → Landing Zone
+    │   ├── staging_service.py        ← Landing → Staging (MERGE)
+    │   └── service_layer_service.py  ← Staging → DWH (MERGE dims + facts)
+    └── pipeline/
+        └── pipeline_orchestrator.py  ← Orquestador end-to-end
 ```
 
-![Diagrama de Arquitectura](docs/architecture_diagram.png)
+### Principios de diseño
+
+- **Inyección de dependencias**: cada clase recibe sus dependencias por constructor
+- **Inversión de dependencias**: `domain` no importa de `infrastructure` directamente (usa interfaces)
+- **Inmutabilidad**: `Settings` y `DatabaseSettings` son `frozen=True`
+- **Fail-fast**: el pipeline detiene la ejecución ante el primer error crítico
+
+---
+
+## 🏗️ Arquitectura de Datos
+
+```
+CSV FILES (10 archivos)
+        │ COPY de PostgreSQL
+        ▼
+┌────────────────────────────────┐
+│  CAPA 1: LANDING ZONE          │  10 tablas raw_* (tipos TEXT)
+└───────────────┬────────────────┘
+                │ MERGE (INSERT / UPDATE / Soft Delete)
+                ▼
+┌────────────────────────────────┐
+│  CAPA 2: STAGING               │  10 tablas stg_* + auditoría
+└───────────────┬────────────────┘
+                │ Transformaciones
+                ▼
+┌────────────────────────────────┐
+│  CAPA 3: TRANSFORMATION        │  (reservada para futuras transformaciones)
+└───────────────┬────────────────┘
+                │ MERGE a Star Schema
+                ▼
+┌────────────────────────────────┐
+│  CAPA 4: SERVICE / DWH         │  8 dimensiones + 3 hechos (Star Schema)
+└────────────────────────────────┘
+```
 
 ---
 
@@ -79,47 +97,65 @@ Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando P
 
 ### 🔄 MERGE con 3 Casos
 
-Implementado en todos los scripts DML de staging:
-
 ```sql
-WHEN MATCHED           → UPDATE (actualizar y reactivar)
-WHEN NOT MATCHED       → INSERT (nuevos registros)
-WHEN NOT MATCHED BY SOURCE → Soft Delete (marcar is_deleted = TRUE)
+WHEN MATCHED                   → UPDATE (actualizar y reactivar)
+WHEN NOT MATCHED               → INSERT (nuevos registros)
+WHEN NOT MATCHED BY SOURCE     → Soft Delete (is_deleted = TRUE)
 ```
 
 ### 📝 Auditoría Completa
 
-Todas las tablas de staging y service incluyen:
+Todas las tablas de staging y service incluyen: `created_at`, `updated_at`, `is_deleted`, `deleted_at`
 
-- `created_at` - Timestamp de creación
-- `updated_at` - Timestamp de última actualización  
-- `is_deleted` - Marca de soft delete (boolean)
-- `deleted_at` - Fecha de eliminación (NULL si activo)
+### 🧪 Tests unitarios
 
-### ⚡ Pipeline Automatizado
-
-- Orquestador Python que ejecuta todo el flujo
-- Logging profesional con timestamps
-- Manejo de errores y rollback automático
-- Detección automática de delimitadores CSV
-
-### 🔑 Dimensión con Clave Compuesta
-
-`dim_empleado` usa PRIMARY KEY compuesta `(id_empleado, sucursal)` para permitir empleados en múltiples sucursales.
+- **78 tests** con mocks (sin base de datos real)
+- **85%+ de cobertura**
+- Ejecutables con `python -m pytest`
 
 ---
 
 ## 📦 Requisitos
 
-- **PostgreSQL** 12 o superior
-- **Python** 3.8 o superior
-- **Dependencias Python**:
-  - `psycopg2-binary`
-  - `python-dotenv`
+Para **Docker** (recomendado): Docker Desktop  
+Para **local**: Python 3.11+, PostgreSQL 12+
 
 ---
 
-## 🔧 Instalación
+## 🐳 Inicio Rápido con Docker
+
+### Primera ejecución (crea schemas, tablas y carga datos)
+
+```bash
+# 1. Copiar variables de entorno
+copy config\.env.example config\.env
+# Editar DB_PASSWORD en config/.env
+
+# 2. Levantar toda la infraestructura
+docker compose up --build
+```
+
+Esto levanta:
+1. `postgres` — PostgreSQL 15 (con healthcheck)
+2. `etl` — Pipeline Python (espera a que Postgres esté listo)
+
+### Ejecuciones incrementales
+
+```bash
+# Solo el pipeline (sin recrear tablas)
+docker compose run --rm etl python -m src.domain.pipeline.pipeline_orchestrator
+```
+
+### Solo la base de datos (para conectar DBeaver/pgAdmin/Power BI)
+
+```bash
+docker compose up postgres
+# Conectar en: localhost:5432 / data_engineering / postgres / <DB_PASSWORD>
+```
+
+---
+
+## 🛠️ Desarrollo Local
 
 ### 1. Instalar dependencias
 
@@ -127,69 +163,49 @@ Todas las tablas de staging y service incluyen:
 pip install -r config/requirements.txt
 ```
 
-### 2. Crear base de datos
+### 2. Configurar variables de entorno
 
-```sql
-CREATE DATABASE data_engineering;
+```bash
+copy config\.env.example config\.env
+# Editar config/.env con tus credenciales de PostgreSQL
 ```
 
-### 3. Configurar credenciales
+### 3. Ejecutar pipeline (primera vez)
 
-Crear archivo `config/.env`:
-
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=data_engineering
-DB_USER=postgres
-DB_PASSWORD=tu_password
+```bash
+python -m src.domain.pipeline.pipeline_orchestrator --create-schema --create-tables
 ```
 
-### 4. Verificar CSVs
+### 4. Ejecuciones incrementales
 
-Asegurarse de tener los 10 archivos CSV en `data/`:
-
-- Clientes.csv (3,407 registros)
-- Venta.csv (46,645 registros)
-- Productos.csv (291 registros)
-- Compra.csv (11,539 registros)
-- Gasto.csv (8,640 registros)
-- Empleados.csv (267 registros)
-- Sucursales.csv (31 registros)
-- Proveedores.csv (14 registros)
-- CanalDeVenta.csv (3 registros)
-- TiposDeGasto.csv (4 registros)
+```bash
+python -m src.domain.pipeline.pipeline_orchestrator
+```
 
 ---
 
-## 🚀 Uso
-
-### Ejecución Completa (Primera vez)
+## 🧪 Tests
 
 ```bash
-python python\orchestration\run_pipeline.py --create-schema --create-tables
+# Ejecutar todos los tests con reporte de cobertura
+python -m pytest
+
+# Solo un módulo
+python -m pytest tests/domain/test_ingestion_service.py -v
+
+# Ver reporte HTML de cobertura
+start htmlcov/index.html
 ```
 
-**Esto ejecuta**:
-1. ✅ Crea 4 schemas
-2. ✅ Crea 10 tablas en landing_zone
-3. ✅ Crea 10 tablas en staging
-4. ✅ Crea 8 dimensiones + 3 hechos en service
-5. ✅ Puebla dim_tiempo con 4,018 fechas (2015-2025)
-6. ✅ Carga 10 CSVs a landing zone
-7. ✅ Ejecuta 10 MERGEs staging
-8. ✅ Ejecuta 7 MERGEs dimensiones  
-9. ✅ Ejecuta 3 MERGEs hechos
+**Cobertura actual**: 85%+ (umbral mínimo: 80%)
 
-**Tiempo de ejecución**: ~5-7 segundos
-
-### Ejecución Incremental
-
-```bash
-python python\orchestration\run_pipeline.py
-```
-
-Solo ejecuta los pasos de carga (sin recrear tablas).
+| Módulo | Cobertura |
+|--------|-----------|
+| `infrastructure/database/connection.py` | 100% |
+| `infrastructure/repositories/sql_repository.py` | 100% |
+| `domain/services/ingestion_service.py` | 100% |
+| `domain/services/staging_service.py` | 100% |
+| `shared/config/settings.py` | 100% |
 
 ---
 
@@ -197,43 +213,37 @@ Solo ejecuta los pasos de carga (sin recrear tablas).
 
 ```
 postgres-dwh-layered-architecture/
-├── data/                          # Archivos
 │
-├── sql/                           
+├── src/                          ← Código Python refactorizado
+│   ├── shared/                   ← Configuración compartida
+│   ├── infrastructure/           ← Conexión DB y repositorios SQL
+│   └── domain/                   ← Lógica de negocio y orquestador
+│
+├── sql/                          ← Scripts SQL (DDL + DML MERGE)
 │   ├── 00_schemas/
-│   │   └── create_schemas.sql
-│   ├── 01_landing/ddl/
-│   │   └── create_tables.sql
+│   ├── 01_landing/
 │   ├── 02_staging/
-│   │   ├── ddl/create_tables.sql
-│   │   └── dml/                   # 10 scripts MERGE
 │   └── 04_service/
-│       ├── ddl/
-│       │   ├── create_dimensions.sql
-│       │   └── create_facts.sql
-│       └── dml/                   
 │
-├── python/                       
-│   ├── config/
-│   │   ├── database.py           
-│   │   └── settings.py           
-│   ├── ingestion/
-│   │   └── csv_to_landing.py     
-│   ├── etl/
-│   │   └── landing_to_staging.py 
-│   ├── orchestration/
-│   │   └── run_pipeline.py      # Orquestador principal
-│   └── utils/
-│       ├── db_utils.py           
-│       └── logger.py             
+├── tests/                        ← Suite de tests unitarios
+│   ├── conftest.py               ← Fixtures compartidas (mocks)
+│   ├── shared/
+│   ├── infrastructure/
+│   └── domain/
+│
+├── data/                         ← CSVs fuente (10 archivos)
+├── docker/
+│   └── init-db/01_init.sql       ← Init de PostgreSQL
 │
 ├── config/
-│   ├── .env                      # Variables de entorno
+│   ├── .env                      ← Variables de entorno (no en Git)
 │   ├── .env.example
 │   └── requirements.txt
 │
-├── logs/                          # Logs de ejecución
-├── .gitignore
+├── Dockerfile                    ← Imagen Python del pipeline
+├── docker-compose.yml            ← Orquesta postgres + etl
+├── pyproject.toml                ← Configuración de pytest + coverage
+├── .dockerignore
 └── README.md
 ```
 
@@ -241,10 +251,8 @@ postgres-dwh-layered-architecture/
 
 ## 📊 Datos Cargados
 
-### Capa Staging (70,837 registros)
-
-| Tabla | Registros Activos |
-|-------|-------------------|
+| Tabla | Registros |
+|-------|-----------|
 | stg_clientes | 3,407 |
 | stg_ventas | 46,645 |
 | stg_productos | 291 |
@@ -256,22 +264,7 @@ postgres-dwh-layered-architecture/
 | stg_canal_venta | 3 |
 | stg_tipo_gasto | 4 |
 
-### Data Warehouse - Service
-
-**Dimensiones**:
-- dim_tiempo: 4,018 fechas (2015-2025)
-- dim_cliente: 3,407
-- dim_producto: 291
-- dim_sucursal: 31
-- dim_empleado: 267 (clave compuesta)
-- dim_proveedor: 14
-- dim_canal: 3
-- dim_tipo_gasto: 4
-
-**Hechos**:
-- fact_ventas: 46,645 transacciones
-- fact_compras: 11,539 transacciones
-- fact_gastos: 8,640 transacciones
+**DWH**: 8 dimensiones + 3 hechos (66,824 transacciones totales)
 
 ---
 
@@ -280,10 +273,7 @@ postgres-dwh-layered-architecture/
 ### Top 10 Productos más vendidos
 
 ```sql
-SELECT 
-    p.producto,
-    SUM(fv.cantidad) AS total_vendido,
-    SUM(fv.monto_total) AS ingresos_totales
+SELECT p.producto, SUM(fv.cantidad) AS total_vendido, SUM(fv.monto_total) AS ingresos_totales
 FROM service.fact_ventas fv
 JOIN service.dim_producto p ON fv.sk_producto = p.sk_producto
 GROUP BY p.producto
@@ -294,84 +284,16 @@ LIMIT 10;
 ### Ventas por Mes
 
 ```sql
-SELECT 
-    t.anio,
-    t.mes_nombre,
-    COUNT(*) AS cantidad_ventas,
-    SUM(fv.monto_total) AS monto_total
+SELECT t.anio, t.mes_nombre, COUNT(*) AS cantidad_ventas, SUM(fv.monto_total) AS monto_total
 FROM service.fact_ventas fv
 JOIN service.dim_tiempo t ON fv.sk_tiempo_venta = t.sk_tiempo
 GROUP BY t.anio, t.mes, t.mes_nombre
 ORDER BY t.anio, t.mes;
 ```
 
-### Verificar Soft Deletes
-
-```sql
-SELECT 
-    'Activos' AS estado,
-    COUNT(*) AS cantidad
-FROM staging.stg_clientes
-WHERE is_deleted = FALSE
-UNION ALL
-SELECT 
-    'Eliminados' AS estado,
-    COUNT(*) AS cantidad
-FROM staging.stg_clientes
-WHERE is_deleted = TRUE;
-```
-
----
-
-## 🧪 Probar Soft Deletes
-
-1. Ejecutar pipeline inicial
-2. Eliminar algunas filas de `Clientes.csv`
-3. Re-ejecutar: `python python\orchestration\run_pipeline.py`
-4. Verificar: `SELECT * FROM staging.stg_clientes WHERE is_deleted = TRUE`
-
-Los registros eliminados tendrán:
-- `is_deleted = TRUE`
-- `deleted_at` con timestamp
-- `updated_at` actualizado
-
----
-
-## 📈 Conectar con BI Tools
-
-El Data Warehouse está listo para conectarse a:
-
-- **Power BI** - Conector PostgreSQL
-- **Tableau** - PostgreSQL driver
-- **Metabase** - Open source
-- **Apache Superset** - Open source
-- **Looker** - Cloud BI
-
-**Connection string**:
-```
-host=localhost port=5432 dbname=data_engineering user=postgres password=***
-```
-
----
-
-## 🛠️ Troubleshooting
-
-### Error: "fe_sendauth: no password supplied"
-
-✅ **Solución**: Verificar que el archivo `config/.env` existe y tiene `DB_PASSWORD=tu_password`
-
-### Error: "column created_at does not exist"
-
-✅ **Solución**: El script de ingesta especifica columnas explícitamente. Verificar que la versión de `csv_to_landing.py` tenga el diccionario `TABLE_COLUMNS`.
-
-### Error: "duplicate key violates unique constraint"
-
-✅ **Solución**: Si es en `dim_empleado`, verificar que la tabla use PRIMARY KEY `(id_empleado, sucursal)` compuesta.
-
 ---
 
 ## 👥 Autor
 
-**Nachh07**  
-
----
+**Nachh07** — Data Engineering Team  
+Educación IT - Curso Data Engineering

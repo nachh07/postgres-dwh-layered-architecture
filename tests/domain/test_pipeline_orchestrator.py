@@ -53,14 +53,18 @@ def _make_orchestrator(tmp_path, mock_repo, ingestion=None, staging=None, servic
         logs_dir=tmp_path / "logs",
     )
 
-    mock_ingestion = ingestion or MagicMock()
-    mock_ingestion.load_all.return_value = {"a.csv": True}
+    # Solo asignar defaults si no se pasó un mock personalizado
+    mock_ingestion = ingestion if ingestion is not None else MagicMock()
+    if ingestion is None:
+        mock_ingestion.load_all.return_value = {"a.csv": True}
 
-    mock_staging = staging or MagicMock()
-    mock_staging.run_merges.return_value = True
+    mock_staging = staging if staging is not None else MagicMock()
+    if staging is None:
+        mock_staging.run_merges.return_value = True
 
-    mock_service = service_layer or MagicMock()
-    mock_service.run_merges.return_value = True
+    mock_service = service_layer if service_layer is not None else MagicMock()
+    if service_layer is None:
+        mock_service.run_merges.return_value = True
 
     return PipelineOrchestrator(
         repo=mock_repo,
