@@ -8,6 +8,7 @@ Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando P
 - 📦 **8 dimensiones** cargadas
 - 📈 **3 hechos** poblados (66,824 transacciones totales)
 - ⚡ **Pipeline dockerizado** — `docker compose up --build`
+- 🌬️ **Orquestado con Apache Airflow 2.9.1** — DAGs `dwh_init` y `dwh_pipeline`
 - 🔄 **Soft deletes** implementados
 - 📝 **Auditoría completa** en todas las tablas
 - 🧪 **85%+ test coverage** con pytest
@@ -23,6 +24,7 @@ Pipeline end-to-end de ingeniería de datos con arquitectura en 4 capas usando P
 - [CI/CD Pipeline](#-cicd-pipeline)
 - [Requisitos](#-requisitos)
 - [Inicio Rápido con Docker](#-inicio-rápido-con-docker)
+- [Orquestación con Airflow](#️-orquestación-con-airflow)
 - [Desarrollo Local](#️-desarrollo-local)
 - [Tests](#-tests)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
@@ -140,26 +142,34 @@ Para **local**: Python 3.11+, PostgreSQL 12+
 
 ## 🐳 Inicio Rápido con Docker
 
-### Primera ejecución (crea schemas, tablas y carga datos)
+### Primera ejecución
 
 ```bash
-# 1. Copiar variables de entorno
-copy config\.env.example config\.env
-# Editar DB_PASSWORD en config/.env
+# 1. Copiar variables de entorno (Docker Compose lee el .env de la RAÍZ)
+copy config\.env.example .env
+# Editar DB_PASSWORD y las variables AIRFLOW_* en .env
 
 # 2. Levantar toda la infraestructura
-docker compose up --build
+docker compose up --build -d
 ```
 
 Esto levanta:
-1. `postgres` — PostgreSQL 15 (con healthcheck)
-2. `etl` — Pipeline Python (espera a que Postgres esté listo)
+1. `postgres` — Data Warehouse (PostgreSQL 17, con healthcheck)
+2. `pgadmin` — UI de PostgreSQL en http://localhost:5050
+3. `airflow-metadata`, `airflow-init`, `airflow-webserver`, `airflow-scheduler` — ver [Orquestación con Airflow](#️-orquestación-con-airflow)
 
-### Ejecuciones incrementales
+Después, desde la UI de Airflow: ejecutar **`dwh_init`** (crea schemas y tablas) y luego **`dwh_pipeline`** (carga los datos).
+
+### Pipeline sin Airflow (servicio `etl`, ejecución manual)
+
+El servicio `etl` está detrás del profile `manual`, así que `docker compose up` no lo ejecuta.
 
 ```bash
-# Solo el pipeline (sin recrear tablas)
+# Pipeline completo (sin recrear tablas)
 docker compose run --rm etl python -m src.domain.pipeline.pipeline_orchestrator
+
+# ⚠️ Recrear schemas y tablas (DESTRUCTIVO) sin cargar datos
+docker compose run --rm etl python -m src.domain.pipeline.pipeline_orchestrator --create-schema --create-tables --only-init
 ```
 
 ### Solo la base de datos (para conectar DBeaver/pgAdmin/Power BI)
@@ -168,6 +178,72 @@ docker compose run --rm etl python -m src.domain.pipeline.pipeline_orchestrator
 docker compose up postgres
 # Conectar en: localhost:5432 / data_engineering / postgres / <DB_PASSWORD>
 ```
+
+---
+
+## 🌬️ Orquestación con Airflow
+
+Apache Airflow **2.9.1** (LocalExecutor) orquesta el mismo pipeline de `src/`, sin cambiar su lógica: cada paso es un `PythonOperator` y se ve por separado en la UI.
+
+| Qué | Dónde |
+|-----|-------|
+| UI de Airflow | http://localhost:8080 — usuario `admin` / `admin` (desarrollo; se cambia con `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`) |
+| DAGs | `dags/dwh_init.py`, `dags/dwh_pipeline.py` |
+| Callables y configuración | `dags/dwh_common/` (no importa Airflow: se testea en el CI) |
+| Imagen | `docker/airflow/Dockerfile` + `docker/airflow/requirements.txt` |
+| Metadata DB | contenedor `airflow-metadata` (PostgreSQL 16), **separado del DWH** |
+
+### DAGs
+
+**`dwh_init`** — ⚠️ **DESTRUCTIVO**, solo manual (`schedule=None`). Hace `DROP SCHEMA ... CASCADE` de `landing_zone`, `staging`, `transformation` y `service`, y recrea todas las tablas. Equivale a `--create-schema --create-tables --only-init`.
+
+**`dwh_pipeline`** — diario (`@daily`, `catchup=False`, `max_active_runs=1`, `retries=1`):
+
+```
+verificar_csvs → cargar_landing → [staging: 10 MERGE en orden]
+              → [dimensiones: 7 MERGE en paralelo]
+              → [hechos: 3 MERGE, después de TODAS las dimensiones]
+              → validar_conteos
+```
+
+- Los nombres y el orden de los scripts salen de las constantes de `staging_service.py` y `service_layer_service.py`: si se agrega un script ahí, aparece como un task nuevo.
+- Los servicios de `src/` devuelven `False` ante un error. Cada task convierte ese `False` en una excepción: si no, Airflow lo marcaría en verde aunque haya fallado.
+- `validar_conteos` compara `raw_ventas` con las `stg_ventas` activas, y cada hecho con los valores esperados de `dags/dwh_common/config.py` (`EXPECTED_FACT_COUNTS`).
+
+### Primera ejecución
+
+1. `docker compose up --build -d` y esperar a que `airflow-webserver` esté *healthy* (`docker compose ps`).
+2. En la UI, activar y ejecutar **`dwh_init`** (▶ Trigger DAG).
+3. Activar y ejecutar **`dwh_pipeline`**. Al activarlo, Airflow también lanza sola la corrida del último día (`catchup=False`).
+
+Los DAGs se crean pausados. Si se activa `dwh_pipeline` antes de correr `dwh_init`, falla en `cargar_landing` porque las tablas no existen.
+
+Por CLI:
+
+```bash
+docker exec dwh_airflow_scheduler airflow dags list-import-errors
+docker exec dwh_airflow_scheduler airflow dags unpause dwh_init
+docker exec dwh_airflow_scheduler airflow dags trigger dwh_init
+docker exec dwh_airflow_scheduler airflow dags unpause dwh_pipeline
+docker exec dwh_airflow_scheduler airflow dags trigger dwh_pipeline
+```
+
+### Variables de entorno de Airflow
+
+Están en `config/.env.example` (copiar al `.env` de la raíz): `AIRFLOW_ADMIN_USER`, `AIRFLOW_ADMIN_PASSWORD`, `AIRFLOW_METADATA_PASSWORD`, `AIRFLOW_FERNET_KEY` y `AIRFLOW_WEBSERVER_SECRET_KEY`. Las credenciales del DWH (`DB_*`) llegan a Airflow como variables de entorno; no se usan Connections de Airflow.
+
+Generar la Fernet key:
+
+```bash
+docker run --rm apache/airflow:2.9.1-python3.11 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+### Detalles de la integración
+
+- La raíz del proyecto dentro del contenedor es `/opt/dwh` (`PYTHONPATH=/opt/dwh`). `src/`, `sql/` y `data/` se montan como solo lectura; `/opt/dwh/logs` es un volumen escribible, porque `Settings` crea `logs/` al importarse.
+- Los logs de `src/` aparecen dentro del log de cada task en la UI.
+- El mensaje `[WARN] No se encontró .env en: /opt/dwh/config/.env` es esperable: dentro del contenedor las credenciales llegan por variables de entorno.
+- `docker compose down -v` borra **todos** los volúmenes, incluido el historial de Airflow. Para conservarlo, usar `docker compose down` sin `-v`.
 
 ---
 
@@ -241,15 +317,22 @@ postgres-dwh-layered-architecture/
 │   ├── 02_staging/
 │   └── 04_service/
 │
+├── dags/                         ← DAGs de Airflow
+│   ├── dwh_init.py               ← ⚠️ Init destructivo (manual)
+│   ├── dwh_pipeline.py           ← Pipeline diario
+│   └── dwh_common/               ← Callables + config (sin Airflow)
+│
 ├── tests/                        ← Suite de tests unitarios
 │   ├── conftest.py               ← Fixtures compartidas (mocks)
 │   ├── shared/
 │   ├── infrastructure/
-│   └── domain/
+│   ├── domain/
+│   └── dags/                     ← Estructura de DAGs (sin instalar Airflow)
 │
 ├── data/                         ← CSVs fuente (10 archivos)
 ├── docker/
-│   └── init-db/01_init.sql       ← Init de PostgreSQL
+│   ├── init-db/01_init.sql       ← Init de PostgreSQL
+│   └── airflow/                  ← Imagen de Airflow (Dockerfile + requirements)
 │
 ├── config/
 │   ├── .env                      ← Variables de entorno (no en Git)
@@ -257,7 +340,7 @@ postgres-dwh-layered-architecture/
 │   └── requirements.txt
 │
 ├── Dockerfile                    ← Imagen Python del pipeline
-├── docker-compose.yml            ← Orquesta postgres + etl
+├── docker-compose.yml            ← postgres + pgadmin + Airflow (+ etl manual)
 ├── pyproject.toml                ← Configuración de pytest + coverage
 ├── .dockerignore
 └── README.md
