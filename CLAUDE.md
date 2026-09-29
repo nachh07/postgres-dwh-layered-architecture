@@ -66,7 +66,7 @@ start htmlcov/index.html
 ## Architecture
 
 ### Code layers (src/)
-Three strict layers with one-way dependencies (domain knows nothing of infrastructure):
+Three layers with one-way dependencies (`domain → infrastructure → shared`):
 
 - **shared/** — `config/settings.py` (paths, CSV-to-table mappings), `config/database_settings.py` (loads `.env`), `logger.py`
 - **infrastructure/** — `database/connection.py` (psycopg2 wrapper with context managers), `repositories/sql_repository.py` (executes SQL files or strings, counts, truncates)
