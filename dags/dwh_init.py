@@ -31,8 +31,8 @@ with DAG(
     default_args=DEFAULT_ARGS,
     tags=["dwh", "init", "destructivo"],
 ) as dag:
-    crear_schemas_y_tablas = PythonOperator(
+    create_schemas_and_tables = PythonOperator(
         task_id="crear_schemas_y_tablas",
-        python_callable=tasks.inicializar_dwh,
+        python_callable=tasks.initialize_dwh,
         doc_md="DROP + CREATE de los 4 schemas, DDL de todas las tablas y carga de dim_tiempo.",
     )

@@ -57,42 +57,49 @@ with DAG(
     default_args=DEFAULT_ARGS,
     tags=["dwh", "etl"],
 ) as dag:
-    verificar_csvs = PythonOperator(
+    check_csvs = PythonOperator(
         task_id="verificar_csvs",
-        python_callable=tasks.verificar_csvs,
+        python_callable=tasks.check_csv_files,
     )
 
-    cargar_landing = PythonOperator(
+    load_landing = PythonOperator(
         task_id="cargar_landing",
-        python_callable=tasks.cargar_landing,
+        python_callable=tasks.load_landing,
     )
 
     # ---- Landing → Staging (secuencial: respeta dependencias entre entidades)
-    with TaskGroup(group_id="staging", tooltip="Landing → Staging (MERGE)") as staging:
+    with TaskGroup(group_id="staging", tooltip="Landing → Staging (MERGE)") as staging_group:
         chain(
             *[
-                _merge_task(script, tasks.ejecutar_merge_staging, "02_staging/dml")
+                _merge_task(script, tasks.run_staging_merge, "02_staging/dml")
                 for script in STAGING_MERGE_SCRIPTS
             ]
         )
 
     # ---- Staging → Dimensiones (en paralelo: no dependen entre sí)
-    with TaskGroup(group_id="dimensiones", tooltip="Staging → dimensiones") as dimensiones:
+    with TaskGroup(group_id="dimensiones", tooltip="Staging → dimensiones") as dimensions_group:
         for script in DIMENSION_MERGE_SCRIPTS:
-            _merge_task(script, tasks.ejecutar_merge_service, "04_service/dml")
+            _merge_task(script, tasks.run_service_merge, "04_service/dml")
 
     # ---- Staging → Hechos (después de TODAS las dimensiones, por las FK)
-    with TaskGroup(group_id="hechos", tooltip="Staging → hechos") as hechos:
+    with TaskGroup(group_id="hechos", tooltip="Staging → hechos") as facts_group:
         chain(
             *[
-                _merge_task(script, tasks.ejecutar_merge_service, "04_service/dml")
+                _merge_task(script, tasks.run_service_merge, "04_service/dml")
                 for script in FACT_MERGE_SCRIPTS
             ]
         )
 
-    validar_conteos = PythonOperator(
+    validate_counts = PythonOperator(
         task_id="validar_conteos",
-        python_callable=tasks.validar_conteos,
+        python_callable=tasks.validate_counts,
     )
 
-    verificar_csvs >> cargar_landing >> staging >> dimensiones >> hechos >> validar_conteos
+    (
+        check_csvs
+        >> load_landing
+        >> staging_group
+        >> dimensions_group
+        >> facts_group
+        >> validate_counts
+    )

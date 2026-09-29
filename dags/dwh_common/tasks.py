@@ -44,7 +44,7 @@ def ensure(success: bool, message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def inicializar_dwh() -> None:
+def initialize_dwh() -> None:
     """Recrea schemas y tablas del DWH (DESTRUCTIVO: DROP SCHEMA ... CASCADE)."""
     success = PipelineOrchestrator().run(create_schema=True, create_tables=True, only_init=True)
     ensure(success, "Falló la creación de schemas/tablas. Revisá el log del task.")
@@ -55,44 +55,42 @@ def inicializar_dwh() -> None:
 # ---------------------------------------------------------------------------
 
 
-def verificar_csvs() -> None:
+def check_csv_files() -> None:
     """Verifica que existan todos los CSV esperados (`Settings.csv_table_mapping`)."""
-    faltantes = [
+    missing = [
         csv_name
         for csv_name in settings.csv_table_mapping
         if not (settings.data_dir / csv_name).is_file()
     ]
-    if faltantes:
+    if missing:
         raise FileNotFoundError(
-            f"Faltan {len(faltantes)} CSV en {settings.data_dir}: {', '.join(faltantes)}"
+            f"Faltan {len(missing)} CSV en {settings.data_dir}: {', '.join(missing)}"
         )
-    logger.info(
-        "✅ %d CSV encontrados en %s", len(settings.csv_table_mapping), settings.data_dir
-    )
+    logger.info("✅ %d CSV encontrados en %s", len(settings.csv_table_mapping), settings.data_dir)
 
 
-def cargar_landing() -> None:
+def load_landing() -> None:
     """Carga todos los CSV a landing_zone (TRUNCATE + COPY)."""
     results = IngestionService().load_all(truncate=True)
-    fallidos = [csv_name for csv_name, ok in results.items() if not ok]
+    failed = [csv_name for csv_name, ok in results.items() if not ok]
     ensure(
-        bool(results) and not fallidos,
-        f"Falló la carga a landing de: {', '.join(fallidos) or 'ningún CSV procesado'}. "
+        bool(results) and not failed,
+        f"Falló la carga a landing de: {', '.join(failed) or 'ningún CSV procesado'}. "
         "¿Se ejecutó el DAG dwh_init?",
     )
 
 
-def ejecutar_merge_staging(script_name: str) -> None:
+def run_staging_merge(script_name: str) -> None:
     """Ejecuta un script MERGE de landing_zone → staging."""
-    _ejecutar_script(STAGING_DML_DIR, script_name)
+    _run_script(STAGING_DML_DIR, script_name)
 
 
-def ejecutar_merge_service(script_name: str) -> None:
+def run_service_merge(script_name: str) -> None:
     """Ejecuta un script MERGE de staging → service (dimensión o hecho)."""
-    _ejecutar_script(SERVICE_DML_DIR, script_name)
+    _run_script(SERVICE_DML_DIR, script_name)
 
 
-def validar_conteos() -> None:
+def validate_counts() -> None:
     """
     Compara conteos reales contra los esperados y falla si alguno no coincide.
 
@@ -102,7 +100,7 @@ def validar_conteos() -> None:
     checks: list[tuple[str, int, int]] = [
         (
             "staging.stg_ventas (activas) vs landing_zone.raw_ventas",
-            _contar_stg_ventas_activas(),
+            _count_active_stg_ventas(),
             default_repo.get_table_count("landing_zone", "raw_ventas"),
         )
     ]
@@ -111,16 +109,16 @@ def validar_conteos() -> None:
             (f"service.{table}", default_repo.get_table_count("service", table), expected)
         )
 
-    errores = []
-    for descripcion, real, esperado in checks:
-        ok = real == esperado and real >= 0
+    errors = []
+    for description, actual, expected in checks:
+        ok = actual == expected and actual >= 0
         logger.info(
-            "%s %s: real=%s esperado=%s", "✅" if ok else "❌", descripcion, real, esperado
+            "%s %s: real=%s esperado=%s", "✅" if ok else "❌", description, actual, expected
         )
         if not ok:
-            errores.append(f"{descripcion}: real={real} esperado={esperado}")
+            errors.append(f"{description}: real={actual} esperado={expected}")
 
-    ensure(not errores, "Validación de conteos fallida: " + "; ".join(errores))
+    ensure(not errors, "Validación de conteos fallida: " + "; ".join(errors))
 
 
 # ---------------------------------------------------------------------------
@@ -128,14 +126,14 @@ def validar_conteos() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _ejecutar_script(subdirs: tuple[str, ...], script_name: str) -> None:
+def _run_script(subdirs: tuple[str, ...], script_name: str) -> None:
     script_path = settings.sql_dir.joinpath(*subdirs, script_name)
     entity = script_name.removeprefix("merge_").removesuffix(".sql")
     success = default_repo.execute_file(script_path, f"MERGE {entity}")
     ensure(success, f"Falló {script_path.name}. Revisá el log del task.")
 
 
-def _contar_stg_ventas_activas() -> int:
+def _count_active_stg_ventas() -> int:
     """Cuenta ventas no borradas en staging (-1 si hay error, como get_table_count)."""
     try:
         with default_db.cursor() as cur:

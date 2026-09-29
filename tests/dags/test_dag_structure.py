@@ -36,22 +36,22 @@ FACT_IDS = _ids("hechos", FACT_MERGE_SCRIPTS)
 
 
 class TestDwhInit:
-    def test_es_manual_y_sin_catchup(self, load_dag):
+    def test_is_manual_without_catchup(self, load_dag):
         dag = load_dag("dwh_init.py")
         assert dag.dag_id == "dwh_init"
         assert dag.kwargs["schedule"] is None
         assert dag.kwargs["catchup"] is False
         assert dag.kwargs["max_active_runs"] == 1
 
-    def test_advierte_que_es_destructivo(self, load_dag):
+    def test_warns_it_is_destructive(self, load_dag):
         dag = load_dag("dwh_init.py")
         assert "BORRA TODO" in dag.kwargs["doc_md"]
         assert "destructivo" in dag.kwargs["tags"]
 
-    def test_un_task_que_llama_al_orquestador(self, load_dag):
+    def test_single_task_calls_orchestrator(self, load_dag):
         dag = load_dag("dwh_init.py")
         assert list(dag.tasks) == ["crear_schemas_y_tablas"]
-        assert dag.tasks["crear_schemas_y_tablas"].python_callable is tasks.inicializar_dwh
+        assert dag.tasks["crear_schemas_y_tablas"].python_callable is tasks.initialize_dwh
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ class TestDwhInit:
 
 
 class TestDwhPipelineParams:
-    def test_parametros_del_dag(self, load_dag):
+    def test_dag_params(self, load_dag):
         dag = load_dag("dwh_pipeline.py")
         assert dag.dag_id == "dwh_pipeline"
         assert dag.kwargs["schedule"] == "@daily"
@@ -74,11 +74,11 @@ class TestDwhPipelineParams:
         expected |= set(STAGING_IDS) | set(DIM_IDS) | set(FACT_IDS)
         assert set(dag.tasks) == expected
 
-    def test_scripts_referenciados_existen(self, load_dag):
+    def test_referenced_scripts_exist(self, load_dag):
         dag = load_dag("dwh_pipeline.py")
         dirs = {
-            tasks.ejecutar_merge_staging: settings.sql_dir / "02_staging" / "dml",
-            tasks.ejecutar_merge_service: settings.sql_dir / "04_service" / "dml",
+            tasks.run_staging_merge: settings.sql_dir / "02_staging" / "dml",
+            tasks.run_service_merge: settings.sql_dir / "04_service" / "dml",
         }
         merge_tasks = [t for t in dag.tasks.values() if "script_name" in t.op_kwargs]
         assert len(merge_tasks) == len(STAGING_IDS) + len(DIM_IDS) + len(FACT_IDS)
@@ -86,30 +86,30 @@ class TestDwhPipelineParams:
             assert (dirs[task.python_callable] / task.op_kwargs["script_name"]).is_file()
 
 
-class TestDwhPipelineDependencias:
-    def test_inicio_del_pipeline(self, load_dag):
+class TestDwhPipelineDependencies:
+    def test_pipeline_start(self, load_dag):
         t = load_dag("dwh_pipeline.py").tasks
         assert t["verificar_csvs"].upstream == set()
         assert t["cargar_landing"].upstream == {"verificar_csvs"}
         assert t[STAGING_IDS[0]].upstream == {"cargar_landing"}
 
-    def test_staging_es_secuencial_en_orden(self, load_dag):
+    def test_staging_is_sequential_in_order(self, load_dag):
         t = load_dag("dwh_pipeline.py").tasks
         for up, down in zip(STAGING_IDS, STAGING_IDS[1:], strict=False):
             assert t[down].upstream == {up}
 
-    def test_dimensiones_en_paralelo_despues_de_staging(self, load_dag):
+    def test_dimensions_run_in_parallel_after_staging(self, load_dag):
         t = load_dag("dwh_pipeline.py").tasks
         for dim in DIM_IDS:
             assert t[dim].upstream == {STAGING_IDS[-1]}
 
-    def test_hechos_despues_de_todas_las_dimensiones(self, load_dag):
+    def test_facts_run_after_all_dimensions(self, load_dag):
         t = load_dag("dwh_pipeline.py").tasks
         assert t[FACT_IDS[0]].upstream == set(DIM_IDS)
         for up, down in zip(FACT_IDS, FACT_IDS[1:], strict=False):
             assert t[down].upstream == {up}
 
-    def test_validacion_al_final(self, load_dag):
+    def test_validation_runs_last(self, load_dag):
         t = load_dag("dwh_pipeline.py").tasks
         assert t["validar_conteos"].upstream == {FACT_IDS[-1]}
         assert t["validar_conteos"].downstream == set()
