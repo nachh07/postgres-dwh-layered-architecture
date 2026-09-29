@@ -1,0 +1,2 @@
+# Scripts de shell y entrypoints siempre con LF (se ejecutan en contenedores Linux)
+*.sh text eol=lf

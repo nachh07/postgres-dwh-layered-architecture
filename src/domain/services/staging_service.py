@@ -38,6 +38,10 @@ _STAGING_TABLES = [
     "stg_tipo_gasto",
 ]
 
+# Alias públicos (usados por los DAGs de Airflow para crear un task por script)
+STAGING_MERGE_SCRIPTS = _MERGE_ORDER
+STAGING_TABLES = _STAGING_TABLES
+
 
 class StagingService:
     """

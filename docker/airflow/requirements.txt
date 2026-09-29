@@ -1,0 +1,5 @@
+# Dependencias del proyecto que necesitan los DAGs dentro de la imagen de Airflow.
+# Sin versión: las fija el constraints file oficial de Airflow (ver docker/airflow/Dockerfile).
+# Nota: NO agregar Airflow a config/requirements.txt (lo usan el ETL y el CI).
+psycopg2-binary
+python-dotenv
