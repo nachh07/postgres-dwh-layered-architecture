@@ -1,26 +1,76 @@
 # =============================================================================
 # docker-compose.yml
-# Pipeline ETL — PostgreSQL DWH Layered Architecture
+# Pipeline ETL — PostgreSQL DWH Layered Architecture + Apache Airflow
 #
-# Servicios:
-#   postgres  — Base de datos PostgreSQL 15
-#   etl       — Pipeline Python (build local)
+# Servicios (se levantan con `docker compose up`):
+#   postgres           — Data Warehouse (PostgreSQL 17)
+#   pgadmin            — UI de PostgreSQL        → http://localhost:5050
+#   airflow-metadata   — Metadata DB de Airflow (PostgreSQL 16, SEPARADA del DWH)
+#   airflow-init       — Migra la metadata DB y crea el usuario admin (corre una vez)
+#   airflow-webserver  — UI de Airflow           → http://localhost:8080
+#   airflow-scheduler  — Scheduler (LocalExecutor: ejecuta los tasks)
+#
+# Servicio manual (profile "manual", NO se levanta con `up`):
+#   etl                — Pipeline Python sin Airflow (CLI del orquestador)
 #
 # Uso:
-#   Primera ejecución (crea schemas y tablas):
-#     docker compose up --build
+#   Primera vez:
+#     docker compose up --build -d
+#     → En la UI de Airflow: ejecutar dwh_init (⚠️ borra el DWH) y luego dwh_pipeline
 #
-#   Ejecuciones incrementales (no recrea tablas):
-#     docker compose run --rm etl
+#   Pipeline sin Airflow (ejecución manual):
+#     docker compose run --rm etl python -m src.domain.pipeline.pipeline_orchestrator
+#     docker compose run --rm etl python -m src.domain.pipeline.pipeline_orchestrator \
+#       --create-schema --create-tables          # ⚠️ destructivo
 #
-#   Solo levantar la base de datos (para conectar DBeaver/pgAdmin):
+#   Solo la base de datos (para conectar DBeaver/pgAdmin):
 #     docker compose up postgres
 # =============================================================================
+
+# ---------------------------------------------------------------------------
+# Configuración común de los servicios de Airflow
+# ---------------------------------------------------------------------------
+x-airflow-common: &airflow-common
+  # La imagen la construye solo airflow-init (ver abajo); webserver y scheduler
+  # la reutilizan. Si los tres tuvieran `build`, compose los construiría en
+  # paralelo con el mismo tag y fallaría ("image already exists").
+  image: dwh-airflow:2.9.1
+  pull_policy: never
+  environment: &airflow-common-env
+    TZ: America/Argentina/Buenos_Aires
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_METADATA_PASSWORD:-airflow}@airflow-metadata:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-dwh-dev-secret-key}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: America/Argentina/Buenos_Aires
+    AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: America/Argentina/Buenos_Aires
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Credenciales del DWH: las lee src/shared/config/database_settings.py
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_NAME: data_engineering
+    DB_USER: postgres
+    DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  volumes:
+    # Raíz del proyecto en /opt/dwh (PYTHONPATH=/opt/dwh, ver docker/airflow/Dockerfile)
+    - ./src:/opt/dwh/src:ro
+    - ./sql:/opt/dwh/sql:ro
+    - ./data:/opt/dwh/data:ro
+    - dwh-logs:/opt/dwh/logs
+    # DAGs y logs propios de Airflow
+    - ./dags:/opt/airflow/dags
+    - airflow-logs:/opt/airflow/logs
+  networks:
+    - dwh_network
 
 services:
 
   # --------------------------------------------------------------------------
-  # PostgreSQL 17
+  # PostgreSQL 17 — Data Warehouse
   # --------------------------------------------------------------------------
   postgres:
     image: postgres:17-alpine
@@ -46,13 +96,18 @@ services:
       - dwh_network
 
   # --------------------------------------------------------------------------
-  # Inicializador de Base de Datos (Solo crea schemas y tablas)
+  # Pipeline Python sin Airflow (solo ejecución manual)
+  #
+  # Está detrás del profile "manual" para que `docker compose up` no lo
+  # ejecute: antes corría --create-schema (DROP SCHEMA ... CASCADE) en cada
+  # `up` y competía con Airflow. Se usa con `docker compose run --rm etl ...`.
   # --------------------------------------------------------------------------
-  init-db:
+  etl:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dwh_init_db
+    container_name: dwh_etl
+    profiles: ["manual"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,11 +116,9 @@ services:
     environment:
       # Dentro de la red de docker, la BD se llama 'postgres'
       DB_HOST: postgres
-    command: >
-      python -m src.domain.pipeline.pipeline_orchestrator
-      --create-schema
-      --create-tables
-      --only-init
+      DB_PORT: "5432"
+    volumes:
+      - ./data:/app/data:ro
     networks:
       - dwh_network
     restart: "no"
@@ -91,6 +144,98 @@ services:
     networks:
       - dwh_network
 
+  # --------------------------------------------------------------------------
+  # PostgreSQL 16 — Metadata DB de Airflow
+  # Contenedor y volumen separados del DWH: el DROP SCHEMA de dwh_init
+  # no la afecta.
+  # --------------------------------------------------------------------------
+  airflow-metadata:
+    image: postgres:16-alpine
+    container_name: dwh_airflow_metadata
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_METADATA_PASSWORD:-airflow}
+    volumes:
+      - airflow-metadata-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dwh_network
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # Airflow Init — migra la metadata DB y crea el usuario admin (corre una vez)
+  # Usa el entrypoint oficial de la imagen (_AIRFLOW_DB_MIGRATE /
+  # _AIRFLOW_WWW_USER_CREATE): es idempotente, se puede re-ejecutar.
+  # --------------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: dwh_airflow_init
+    build:
+      context: ./docker/airflow
+      dockerfile: Dockerfile
+    pull_policy: build
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Airflow Webserver — UI en http://localhost:8080
+  # --------------------------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: dwh_airflow_webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      airflow-metadata:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # Airflow Scheduler — con LocalExecutor también ejecuta los tasks
+  # --------------------------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: dwh_airflow_scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-metadata:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 # =============================================================================
 # Volúmenes y redes
 # =============================================================================
@@ -98,6 +243,12 @@ volumes:
   pgdata:
     driver: local
   pgadmin-data:
+    driver: local
+  airflow-metadata-pgdata:
+    driver: local
+  airflow-logs:
+    driver: local
+  dwh-logs:
     driver: local
 
 networks:
