@@ -48,5 +48,10 @@ ignore = [
     "B008",  # do not perform function calls in default arguments
 ]
 
+[tool.ruff.lint.isort]
+# dwh_common vive en dags/ (Airflow agrega esa carpeta al sys.path)
+known-first-party = ["src", "dwh_common"]
+known-third-party = ["airflow"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # allow assert in tests

@@ -28,6 +28,10 @@ _FACT_MERGES = [
     "merge_fact_gastos.sql",
 ]
 
+# Alias públicos (usados por los DAGs de Airflow para crear un task por script)
+DIMENSION_MERGE_SCRIPTS = _DIMENSION_MERGES
+FACT_MERGE_SCRIPTS = _FACT_MERGES
+
 
 class ServiceLayerService:
     """
